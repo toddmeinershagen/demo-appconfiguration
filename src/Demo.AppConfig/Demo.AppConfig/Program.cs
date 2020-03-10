@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration.AzureAppConfiguration;
 using Microsoft.FeatureManagement;
 using System.Threading.Tasks;
 using System;
@@ -19,6 +20,13 @@ namespace Demo.AppConfig
                 var featureManager = serviceProvider.GetRequiredService<IFeatureManager>();
                 var renderer = new FeatureFlagRenderer(featureManager);
 
+                var timer = new System.Timers.Timer(TimeSpan.FromSeconds(5).TotalMilliseconds);
+                timer.Elapsed += async (sender, e) =>
+                {
+                    await Refresher.RefreshAsync();
+                };
+                timer.Start();
+
                 while (true)
                 {
                     await renderer.RenderFlags(clientId);
@@ -27,16 +35,21 @@ namespace Demo.AppConfig
             }
         }
 
+        private static IConfigurationRefresher Refresher;
+
         private static IConfigurationRoot InitializeConfiguration()
         {
             return new ConfigurationBuilder()
-                //.AddJsonFile("appsettings.json", false, true)
+                .AddJsonFile("appsettings.json", false, true)
                 
                 .AddAzureAppConfiguration(options =>
                 {
                     options
                         .Connect(Environment.GetEnvironmentVariable("ConnectionString"))
+                        .ConfigureRefresh(r => r.SetCacheExpiration(TimeSpan.FromSeconds(5)))
                         .UseFeatureFlags(f => f.CacheExpirationTime = TimeSpan.FromSeconds(1));
+
+                    Refresher = options.GetRefresher();
                 })
                 
                 .Build();
